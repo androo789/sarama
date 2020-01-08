@@ -95,10 +95,12 @@ type asyncProducer struct {
 	client Client
 	conf   *Config
 
-	errors                    chan *ProducerError
+	errors chan *ProducerError
+	/*重试chan和inputchan相同*/
 	input, successes, retries chan *ProducerMessage
 	inFlight                  sync.WaitGroup
 
+	/*每次broker都需要一个生产者吗*/
 	brokers    map[*Broker]*brokerProducer
 	brokerRefs map[*brokerProducer]int
 	brokerLock sync.Mutex
@@ -265,6 +267,7 @@ func (p *asyncProducer) Successes() <-chan *ProducerMessage {
 }
 
 func (p *asyncProducer) Input() chan<- *ProducerMessage {
+	/*这是实际发送的chan*/
 	return p.input
 }
 
@@ -356,6 +359,7 @@ func (p *asyncProducer) dispatcher() {
 
 // one per topic
 // partitions messages, then dispatches them by partition
+/*每一个topic都需要一个生产者？？*/
 type topicProducer struct {
 	parent *asyncProducer
 	topic  string
@@ -452,6 +456,7 @@ func (tp *topicProducer) partitionMessage(msg *ProducerMessage) error {
 // one per partition per topic
 // dispatches messages to the appropriate broker
 // also responsible for maintaining message order during retries
+/*这都是什么概念，每一个分区都需要个生产者？？？？*/
 type partitionProducer struct {
 	parent    *asyncProducer
 	topic     string
@@ -688,6 +693,7 @@ type brokerProducerResponse struct {
 
 // groups messages together into appropriately-sized batches for sending to the broker
 // handles state related to retries etc
+/*是不是每个节点都需要一个生产者*/
 type brokerProducer struct {
 	parent *asyncProducer
 	broker *Broker
@@ -706,6 +712,7 @@ type brokerProducer struct {
 	currentRetries map[string]map[int32]error
 }
 
+/*这可能是真正发送消息的死循环？？*/
 func (bp *brokerProducer) run() {
 	var output chan<- *produceSet
 	Logger.Printf("producer/broker/%d starting up\n", bp.broker.ID())
@@ -801,6 +808,7 @@ func (bp *brokerProducer) shutdown() {
 	Logger.Printf("producer/broker/%d shut down\n", bp.broker.ID())
 }
 
+/*怎么判断是不是需要重试？？？*/
 func (bp *brokerProducer) needsRetry(msg *ProducerMessage) error {
 	if bp.closing != nil {
 		return bp.closing
@@ -985,11 +993,14 @@ func (bp *brokerProducer) handleError(sent *produceSet, err error) {
 // singleton
 // effectively a "bridge" between the flushers and the dispatcher in order to avoid deadlock
 // based on https://godoc.org/github.com/eapache/channels#InfiniteChannel
+/*重试的函数，*/
 func (p *asyncProducer) retryHandler() {
 	var msg *ProducerMessage
 	buf := queue.New()
 
 	for {
+		/*拿到消息，消费放入buf里面，从队列中拿出来，再放入input中取发送
+		为什么还要用队列，放在chan中呆着行吗？？？？*/
 		if buf.Length() == 0 {
 			msg = <-p.retries
 		} else {
@@ -1057,9 +1068,11 @@ func (p *asyncProducer) returnSuccesses(batch []*ProducerMessage) {
 }
 
 func (p *asyncProducer) retryMessage(msg *ProducerMessage, err error) {
+	/*如果重试次数太多了就算错误，去处理这个错误*/
 	if msg.retries >= p.conf.Producer.Retry.Max {
 		p.returnError(msg, err)
 	} else {
+		/*如果还可以重试就放入重试chan*/
 		msg.retries++
 		p.retries <- msg
 	}

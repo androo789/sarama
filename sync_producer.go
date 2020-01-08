@@ -33,6 +33,7 @@ type SyncProducer interface {
 }
 
 type syncProducer struct {
+	/*同步发送本质也是用了异步发送，但是可能加了锁，等待结果*/
 	producer *asyncProducer
 	wg       sync.WaitGroup
 }
@@ -50,6 +51,7 @@ func NewSyncProducer(addrs []string, config *Config) (SyncProducer, error) {
 
 	p, err := NewAsyncProducer(addrs, config)
 	if err != nil {
+		/*异常才会在这里返回*/
 		return nil, err
 	}
 	return newSyncProducerFromAsyncProducer(p.(*asyncProducer)), nil
@@ -69,9 +71,11 @@ func NewSyncProducerFromClient(client Client) (SyncProducer, error) {
 	return newSyncProducerFromAsyncProducer(p.(*asyncProducer)), nil
 }
 
+/*一般都会走到这个函数*/
 func newSyncProducerFromAsyncProducer(p *asyncProducer) *syncProducer {
 	sp := &syncProducer{producer: p}
 
+	/*如果这里add 2 那么是不是一次性的*/
 	sp.wg.Add(2)
 	go withRecover(sp.handleSuccesses)
 	go withRecover(sp.handleErrors)
@@ -92,8 +96,12 @@ func verifyProducerConfig(config *Config) error {
 func (sp *syncProducer) SendMessage(msg *ProducerMessage) (partition int32, offset int64, err error) {
 	expectation := make(chan *ProducerError, 1)
 	msg.expectation = expectation
+	/*本质是用了异步发送，，，，，
+	哪里在死循环读这个input*/
 	sp.producer.Input() <- msg
 
+	/*可能强行等待异常，这么做的同步
+	哪里在写这个expectation*/
 	if err := <-expectation; err != nil {
 		return -1, -1, err.Err
 	}
@@ -144,6 +152,8 @@ func (sp *syncProducer) handleErrors() {
 
 func (sp *syncProducer) Close() error {
 	sp.producer.AsyncClose()
+
+	/*关闭的时候才会等待？？*/
 	sp.wg.Wait()
 	return nil
 }
