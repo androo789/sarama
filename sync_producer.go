@@ -137,6 +137,7 @@ func (sp *syncProducer) SendMessages(msgs []*ProducerMessage) error {
 func (sp *syncProducer) handleSuccesses() {
 	defer sp.wg.Done()
 	for msg := range sp.producer.Successes() {
+		//这里用了异常chan
 		expectation := msg.expectation
 		expectation <- nil
 	}

@@ -206,8 +206,10 @@ type ProducerMessage struct {
 	// successfully delivered and RequiredAcks is not NoResponse.
 	Timestamp time.Time
 
-	retries        int
-	flags          flagSet
+	retries int
+	flags   flagSet
+
+	//什么时候使用这个变量
 	expectation    chan *ProducerError
 	sequenceNumber int32
 }
@@ -302,6 +304,7 @@ func (p *asyncProducer) AsyncClose() {
 
 // singleton
 // dispatches messages by topic
+/*异步生产者dispatcher是总的入口*/
 func (p *asyncProducer) dispatcher() {
 	handlers := make(map[string]chan<- *ProducerMessage)
 	shuttingDown := false
@@ -342,9 +345,13 @@ func (p *asyncProducer) dispatcher() {
 			p.returnError(msg, ErrMessageSizeTooLarge)
 			continue
 		}
-
+		/*这个map是局部变量
+		一个topic对应一个通道chan
+		找到chan，然后把数据放进去
+		*/
 		handler := handlers[msg.Topic]
 		if handler == nil {
+			//如果value不存在就新建key-value
 			handler = p.newTopicProducer(msg.Topic)
 			handlers[msg.Topic] = handler
 		}
@@ -361,9 +368,13 @@ func (p *asyncProducer) dispatcher() {
 // partitions messages, then dispatches them by partition
 /*每一个topic都需要一个生产者？？*/
 type topicProducer struct {
+
+	//父类是异步生产者
 	parent *asyncProducer
 	topic  string
-	input  <-chan *ProducerMessage
+
+	//从异步生产者那边得到数据
+	input <-chan *ProducerMessage
 
 	breaker     *breaker.Breaker
 	handlers    map[int32]chan<- *ProducerMessage
@@ -384,6 +395,9 @@ func (p *asyncProducer) newTopicProducer(topic string) chan<- *ProducerMessage {
 	return input
 }
 
+/*主题生产者把数据送给分区生产者
+一个topic对应多个分区，这是kakfa的结构ok没问题
+*/
 func (tp *topicProducer) dispatch() {
 	for msg := range tp.input {
 		if msg.retries == 0 {
@@ -461,7 +475,9 @@ type partitionProducer struct {
 	parent    *asyncProducer
 	topic     string
 	partition int32
-	input     <-chan *ProducerMessage
+
+	//从topic生产者得到数据
+	input <-chan *ProducerMessage
 
 	leader         *Broker
 	breaker        *breaker.Breaker
@@ -575,6 +591,8 @@ func (pp *partitionProducer) dispatch() {
 			Logger.Printf("producer/leader/%s/%d selected broker %d\n", pp.topic, pp.partition, pp.leader.ID())
 		}
 
+		/*某个分区一定在一个broker上
+		所以把数据送给broker生产者*/
 		pp.brokerProducer.input <- msg
 	}
 }
@@ -712,13 +730,15 @@ type brokerProducer struct {
 	currentRetries map[string]map[int32]error
 }
 
-/*这可能是真正发送消息的死循环？？*/
+/*这可能是真正发送消息的死循环？？
+节点生产者把数据送给produceSet*/
 func (bp *brokerProducer) run() {
 	var output chan<- *produceSet
 	Logger.Printf("producer/broker/%d starting up\n", bp.broker.ID())
 
 	for {
 		select {
+		//把要发送的数据读出来
 		case msg, ok := <-bp.input:
 			if !ok {
 				Logger.Printf("producer/broker/%d input chan closed\n", bp.broker.ID())
@@ -761,6 +781,7 @@ func (bp *brokerProducer) run() {
 				}
 			}
 
+			//这里可能是真的发送，就是把数据放入缓冲区，可能等缓冲区数据足够了就发送
 			if err := bp.buffer.add(msg); err != nil {
 				bp.parent.returnError(msg, err)
 				continue
@@ -843,6 +864,7 @@ func (bp *brokerProducer) rollOver() {
 	bp.buffer = newProduceSet(bp.parent)
 }
 
+/*真正的返回的入口，处理成功或者失败的消息*/
 func (bp *brokerProducer) handleResponse(response *brokerProducerResponse) {
 	if response.err != nil {
 		bp.handleError(response.set, response.err)
@@ -873,7 +895,7 @@ func (bp *brokerProducer) handleSuccess(sent *produceSet, response *ProduceRespo
 		}
 
 		switch block.Err {
-		// Success
+		// Success，这个表示成功
 		case ErrNoError:
 			if bp.parent.conf.Version.IsAtLeast(V0_10_0_0) && !block.Timestamp.IsZero() {
 				for _, msg := range pSet.msgs {
@@ -1057,6 +1079,7 @@ func (p *asyncProducer) returnErrors(batch []*ProducerMessage, err error) {
 	}
 }
 
+/*如果返回成功，就把消息写入successes的chan里面*/
 func (p *asyncProducer) returnSuccesses(batch []*ProducerMessage) {
 	for _, msg := range batch {
 		if p.conf.Producer.Return.Successes {

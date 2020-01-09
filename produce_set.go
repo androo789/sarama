@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+/*produceSet 对消息进行聚集，若配置了压缩的参数，则会压缩一个set中的所有的msg, 即批量压缩， 然后构建一个ProduceRequest
+
+然后由 broker.Produce 将请求发送出去，其中 broker 结构体代表一个kafka broker 的连接
+
+*/
 type partitionSet struct {
 	msgs          []*ProducerMessage
 	recordsToSend Records

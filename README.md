@@ -5,6 +5,8 @@
 [![Coverage](https://codecov.io/gh/Shopify/sarama/branch/master/graph/badge.svg)](https://codecov.io/gh/Shopify/sarama)
 
 Sarama is an MIT-licensed Go client library for [Apache Kafka](https://kafka.apache.org/) version 0.8 (and later).
+怎么发送的？怎么重试的？发送缓冲区是怎么回事？
+这种开源库的代码，这比业务代码牛逼好几倍的
 
 ## Getting started
 

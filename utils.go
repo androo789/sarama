@@ -32,6 +32,7 @@ func dupInt32Slice(input []int32) []int32 {
 	return ret
 }
 
+/*处理崩溃的情况*/
 func withRecover(fn func()) {
 	defer func() {
 		handler := PanicHandler

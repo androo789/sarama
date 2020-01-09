@@ -111,7 +111,8 @@ func TestAsyncProducer(t *testing.T) {
 	leader.Returns(prodSuccess)
 
 	config := NewConfig()
-	config.Producer.Flush.Messages = 10
+
+	config.Producer.Flush.Messages = 10 //到了10条消息一定发送出去
 	config.Producer.Return.Successes = true
 	producer, err := NewAsyncProducer([]string{seedBroker.Addr()}, config)
 	if err != nil {

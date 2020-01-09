@@ -351,6 +351,7 @@ func (b *MockBroker) serverError(err error) {
 	b.t.Errorf(err.Error())
 }
 
+/*启动一个假的broker？？？？这个怎么做到的？？？？*/
 // NewMockBroker launches a fake Kafka broker. It takes a TestReporter as provided by the
 // test framework and a channel of responses to use.  If an error occurs it is
 // simply logged to the TestReporter and the broker exits.
